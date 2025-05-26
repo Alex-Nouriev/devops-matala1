@@ -5,20 +5,23 @@ import json
 app = Flask(__name__)
 
 # Connect to Redis container
-r = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
+redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
 
 def get_next_todo_id():
     """
     Increments and returns the next available To-Do ID.
     """
-    next_id = r.get('next_todo_id')
+    next_id = redis_client.get('next_todo_id')
+
     if next_id is None:
         next_id = 1
     else:
         next_id = int(next_id)
-    r.set('next_todo_id', next_id + 1)
+
+    redis_client.set('next_todo_id', next_id + 1)
+
     return next_id
-    
+
 @app.route('/', methods=['GET'])
 def index():
     """
@@ -58,11 +61,12 @@ def add_todo_list():
     Create a new To-Do list with multiple tasks.
     """
     tasks = request.json.get('tasks')
+
     if not tasks or not isinstance(tasks, list):
         return jsonify({'message': 'Tasks must be provided as a list'}), 400
 
     todo_id = get_next_todo_id()
-    r.set(f"todo:{todo_id}", json.dumps(tasks))
+    redis_client.set(f"todo:{todo_id}", json.dumps(tasks))
 
     return jsonify({
         'id': todo_id,
@@ -74,7 +78,8 @@ def get_single_todo(todo_id):
     """
     Retrieve a single To-Do list by its ID.
     """
-    value = r.get(f"todo:{todo_id}")
+    value = redis_client.get(f"todo:{todo_id}")
+
     if not value:
         return jsonify({'message': 'To-Do not found'}), 404
 
@@ -88,7 +93,8 @@ def delete_todo_list(todo_id):
     """
     Delete a To-Do list by its ID.
     """
-    result = r.delete(f"todo:{todo_id}")
+    result = redis_client.delete(f"todo:{todo_id}")
+
     if result == 0:
         return jsonify({'message': 'To-Do not found'}), 404
 
@@ -99,13 +105,13 @@ def get_all_todos():
     """
     Retrieve all existing To-Do lists.
     """
-    keys = r.keys(pattern='todo:*')
+    keys = redis_client.keys(pattern='todo:*')
     todos = {}
 
     for key in keys:
         todo_id = key.split(":")[1]
         try:
-            tasks = json.loads(r.get(key))
+            tasks = json.loads(redis_client.get(key))
             todos[todo_id] = tasks
         except (ValueError, json.JSONDecodeError):
             continue
